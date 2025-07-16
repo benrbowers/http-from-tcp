@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 )
 
 func main() {
@@ -12,6 +13,7 @@ func main() {
 		panic("Could not open messages.txt:\n" + err.Error())
 	}
 
+	currentLine := ""
 	word := make([]byte, 8)
 	for {
 		n, err := input.Read(word)
@@ -24,7 +26,16 @@ func main() {
 		}
 
 		if n > 0 {
-			fmt.Printf("read: %s\n", string(word[0:n]))
+			newLine := slices.Index(word, byte('\n'))
+			if newLine == -1 {
+				currentLine += string(word[0:n])
+			} else {
+				currentLine += string(word[0:min(newLine, n)])
+				fmt.Printf("read: %s\n", currentLine)
+
+				currentLine = ""
+				currentLine += string(word[newLine+1:])
+			}
 		}
 	}
 }
