@@ -3,21 +3,32 @@ package main
 import (
 	"fmt"
 	"io"
-	"os"
+	"net"
 	"slices"
 )
 
 func main() {
-	input, err := os.Open("messages.txt")
+	// boot.dev requested this port not me 😭
+	tcpListener, err := net.Listen("tcp", "localhost:42069")
 	if err != nil {
-		panic("Could not open messages.txt:\n" + err.Error())
+		panic("Error trying to listen on localhost:42069: " + err.Error())
 	}
 
-	lines := getLinesChannel(input)
+	fmt.Println("Wating for TCP connection...")
+	tcpConn, err := tcpListener.Accept()
+	if err != nil {
+		panic("Error while waiting to accept tcp connection: " + err.Error())
+	}
+	fmt.Println("TCP connection established.")
+	defer tcpListener.Close()
+
+	lines := getLinesChannel(tcpConn)
 
 	for line := range lines {
-		fmt.Printf("read: %s\n", line)
+		fmt.Println(line)
 	}
+
+	fmt.Println("The connection has been closed.")
 }
 
 func getLinesChannel(f io.ReadCloser) <-chan string {
@@ -34,6 +45,7 @@ func getLinesChannel(f io.ReadCloser) <-chan string {
 
 			if err != nil {
 				if err == io.EOF {
+					ch <- currentLine
 					break
 				}
 				panic(err)
