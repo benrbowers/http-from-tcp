@@ -56,6 +56,7 @@ func getLinesChannel(f io.ReadCloser) <-chan string {
 				if newLine == -1 {
 					currentLine += string(word[0:n])
 				} else {
+					// Need the `min` here because `word` can have the last line's characters left over
 					currentLine += string(word[0:min(newLine, n)])
 					ch <- currentLine
 
