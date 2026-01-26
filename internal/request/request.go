@@ -7,16 +7,16 @@ import (
 	"strings"
 )
 
-type RequestStatus int
+type requestStatus int
 
 const (
-	RequestInitialized RequestStatus = iota
+	RequestInitialized requestStatus = iota
 	RequestDone
 )
 
 type Request struct {
 	RequestLine RequestLine
-	Status      RequestStatus
+	Status      requestStatus
 }
 
 type RequestLine struct {
