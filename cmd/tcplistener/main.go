@@ -1,10 +1,9 @@
 package main
 
 import (
+	"app/internal/request"
 	"fmt"
-	"io"
 	"net"
-	"slices"
 )
 
 func main() {
@@ -22,50 +21,13 @@ func main() {
 	fmt.Println("TCP connection established.")
 	defer tcpListener.Close()
 
-	lines := getLinesChannel(tcpConn)
-
-	for line := range lines {
-		fmt.Println(line)
+	req, err := request.RequestFromReader(tcpConn)
+	if err != nil {
+		panic("Error parsing request from TCP connection: " + err.Error())
 	}
 
-	fmt.Println("The connection has been closed.")
-}
-
-func getLinesChannel(f io.ReadCloser) <-chan string {
-	ch := make(chan string)
-
-	go func() {
-		defer close(ch)
-		defer f.Close()
-
-		currentLine := ""
-		word := make([]byte, 8)
-		for {
-			n, err := f.Read(word)
-
-			if err != nil {
-				if err == io.EOF {
-					ch <- currentLine
-					break
-				}
-				panic(err)
-			}
-
-			if n > 0 {
-				newLine := slices.Index(word, byte('\n'))
-				if newLine == -1 {
-					currentLine += string(word[0:n])
-				} else {
-					// Need the `min` here because `word` can have the last line's characters left over
-					currentLine += string(word[0:min(newLine, n)])
-					ch <- currentLine
-
-					currentLine = ""
-					currentLine += string(word[newLine+1:])
-				}
-			}
-		}
-	}()
-
-	return ch
+	fmt.Println("Request line:")
+	fmt.Println("- Method:", req.RequestLine.Method)
+	fmt.Println("- Target:", req.RequestLine.RequestTarget)
+	fmt.Println("- Version:", req.RequestLine.HttpVersion)
 }
