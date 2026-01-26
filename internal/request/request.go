@@ -26,39 +26,63 @@ type RequestLine struct {
 }
 
 func (r *Request) parse(data []byte) (int, error) {
-	requestLine, bytesParsed, err := parseRequestLine(data)
+	switch r.Status {
+	case RequestInitialized:
+		requestLine, bytesParsed, err := parseRequestLine(data)
 
-	if err != nil {
-		return 0, err
+		if err != nil {
+			return 0, err
+		}
+
+		if bytesParsed > 0 {
+			r.RequestLine = *requestLine
+			r.Status = RequestDone
+		}
+
+		return bytesParsed, nil
+	case RequestDone:
+		return 0, fmt.Errorf("error: trying to read data in a done state.")
+	default:
+		return 0, fmt.Errorf("Unknown request status.")
 	}
-
-	if bytesParsed > 0 {
-		r.RequestLine = requestLine
-		r.Status = RequestDone
-	}
-
-	return bytesParsed, nil
 }
 
+const bufferSize int = 8
+
 func RequestFromReader(reader io.Reader) (*Request, error) {
-	requestBytes := []byte{}
-	readBytes := make([]byte, 8)
+	buf := make([]byte, bufferSize)
+	readToIndex := 0
 
 	newRequest := &Request{}
 
 	for newRequest.Status != RequestDone {
-		readSize, err := reader.Read(readBytes)
-		if err != nil {
-			return newRequest, err
+		if readToIndex >= len(buf) {
+			newBuf := make([]byte, len(buf)*2)
+			copy(newBuf, buf)
+			buf = newBuf
 		}
 
-		requestBytes = append(requestBytes, readBytes[0:readSize]...)
-
-		_, err = newRequest.parse(requestBytes)
-		// fmt.Println("Bytes parsed:", bytesParsed)
+		// Reader can read to a SUBSLICE, very cool
+		readSize, err := reader.Read(buf[readToIndex:])
 		if err != nil {
-			return newRequest, err
+			if errors.Is(err, io.EOF) {
+				newRequest.Status = RequestDone
+				break
+			}
+			return nil, err
 		}
+
+		readToIndex += readSize
+
+		numBytesParsed, err := newRequest.parse(buf[:readToIndex])
+		if err != nil {
+			return nil, err
+		}
+
+		// Shifting data out to reuse buffer, in two
+		// simple lines. Also very cool.
+		copy(buf, buf[numBytesParsed:])
+		readToIndex -= numBytesParsed
 	}
 
 	return newRequest, nil
@@ -66,66 +90,64 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 
 // parseRequestLine parses an HTTP request line from a string of bytes.
 // pareRequestLine returns the RequestLine, bytes consumed, and optional error.
-func parseRequestLine(request []byte) (RequestLine, int, error) {
+func parseRequestLine(request []byte) (*RequestLine, int, error) {
 	requestText := string(request)
 
-	lines := strings.Split(requestText, "\r\n")
-	if len(lines) < 2 {
-		return RequestLine{}, 0, nil // No CRLF, so need to read more.
+	crlfIndex := strings.Index(requestText, "\r\n")
+	if crlfIndex == -1 {
+		return nil, 0, nil // No CRLF, so need to read more.
 	}
 
-	requestLineText := lines[0]
+	requestText = requestText[:crlfIndex]
 
-	requestLineParts := strings.Split(requestLineText, " ")
-	if len(requestLineParts) != 3 {
-		return RequestLine{}, 0, errors.New("Invalid request line.")
+	requestParts := strings.Split(requestText, " ")
+	if len(requestParts) != 3 {
+		return nil, 0, errors.New("Invalid request line.")
 	}
 
-	method := requestLineParts[0]
+	method := requestParts[0]
 	if !isCapitalOnly(method) {
-		return RequestLine{}, 0, fmt.Errorf(
+		return nil, 0, fmt.Errorf(
 			`Invalid request method: "%s". Method may only contain captial letters.`,
 			method,
 		)
 	}
 
-	requestTarget := requestLineParts[1]
+	requestTarget := requestParts[1]
 
-	httpVersion := requestLineParts[2]
+	httpVersion := requestParts[2]
 	httpVersionParts := strings.Split(httpVersion, "/")
 	if len(httpVersionParts) != 2 {
-		return RequestLine{}, 0, fmt.Errorf(
+		return nil, 0, fmt.Errorf(
 			`Invalid HTTP version: "%s". Required format: HTTP-name "/" DIGIT "." DIGIT`,
 			httpVersion,
 		)
 	}
 	if httpVersionParts[0] != "HTTP" {
-		return RequestLine{}, 0, fmt.Errorf(
+		return nil, 0, fmt.Errorf(
 			`Invalid HTTP version name: "%s". Only HTTP/1.1 is supported.`,
 			httpVersionParts[0],
 		)
 	}
 	if httpVersionParts[1] != "1.1" {
-		return RequestLine{}, 0, fmt.Errorf(
+		return nil, 0, fmt.Errorf(
 			`Invalid HTTP version number: "%s". Only HTTP/1.1 is supported.`,
 			httpVersionParts[1],
 		)
 	}
 
-	return RequestLine{
+	return &RequestLine{
 			Method:        method,
 			RequestTarget: requestTarget,
 			HttpVersion:   httpVersionParts[1],
 		},
-		len(requestLineText) + 2, // + 2 for CRLF
+		len(requestText) + 2, // + 2 for CRLF
 		nil
 }
 
 func isCapitalOnly(text string) bool {
-	textBytes := []byte(text)
-
-	for _, char := range textBytes {
-		if char < 65 || char > 90 {
+	for _, char := range text {
+		if char < 'A' || char > 'Z' {
 			return false
 		}
 	}
