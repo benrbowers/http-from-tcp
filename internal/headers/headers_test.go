@@ -81,4 +81,15 @@ func TestFieldLineParse(t *testing.T) {
 	assert.Equal(t, 0, n)
 	assert.Equal(t, 0, len(headers))
 	assert.False(t, done)
+
+	// Test: Header already exists
+	headers = Headers{}
+	headers["set-person"] = "lane-loves-go"
+	data = []byte("Set-Person: prime-loves-zig\r\n\r\n")
+	n, done, err = headers.Parse(data)
+	require.NoError(t, err)
+	assert.Equal(t, "lane-loves-go, prime-loves-zig", headers["set-person"])
+	assert.Equal(t, 29, n)
+	assert.Equal(t, 1, len(headers))
+	assert.False(t, done)
 }

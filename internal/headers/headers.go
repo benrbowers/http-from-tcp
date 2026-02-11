@@ -34,9 +34,18 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 
 	fieldName = bytes.ToLower(fieldName)
 
-	h[string(fieldName)] = string(fieldValue)
+	h.Set(string(fieldName), string(fieldValue))
 
 	return crlf + 2, false, nil
+}
+
+func (h Headers) Set(key, value string) {
+	currentVal, alreadyExists := h[key]
+	if alreadyExists {
+		h[key] = currentVal + ", " + value
+	} else {
+		h[key] = value
+	}
 }
 
 var tokenChars = []byte{'!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~'}
