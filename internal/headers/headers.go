@@ -21,7 +21,7 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 
 	nameColon := bytes.Index(data, []byte{':'})
 
-	if data[nameColon-1] == ' ' {
+	if data[nameColon-1] == ' ' || data[nameColon-1] == '\t' {
 		return 0, false, fmt.Errorf("No whitespace is allowed between the field name and colon.")
 	}
 

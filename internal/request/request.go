@@ -1,6 +1,7 @@
 package request
 
 import (
+	"app/internal/headers"
 	"errors"
 	"fmt"
 	"io"
@@ -10,13 +11,15 @@ import (
 type requestStatus int
 
 const (
-	RequestInitialized requestStatus = iota
-	RequestDone
+	requestInitialized requestStatus = iota
+	requestParsingHeaders
+	requestDone
 )
 
 type Request struct {
 	RequestLine RequestLine
 	Status      requestStatus
+	Headers     headers.Headers
 }
 
 type RequestLine struct {
@@ -26,8 +29,24 @@ type RequestLine struct {
 }
 
 func (r *Request) parse(data []byte) (int, error) {
+	totalBytesParsed := 0
+	for r.Status != requestDone {
+		n, err := r.parseSingle(data[totalBytesParsed:])
+		if err != nil {
+			return 0, err
+		}
+		if n == 0 {
+			break
+		}
+		totalBytesParsed += n
+	}
+
+	return totalBytesParsed, nil
+}
+
+func (r *Request) parseSingle(data []byte) (int, error) {
 	switch r.Status {
-	case RequestInitialized:
+	case requestInitialized:
 		requestLine, bytesParsed, err := parseRequestLine(data)
 
 		if err != nil {
@@ -36,11 +55,23 @@ func (r *Request) parse(data []byte) (int, error) {
 
 		if bytesParsed > 0 {
 			r.RequestLine = *requestLine
-			r.Status = RequestDone
+			r.Status = requestParsingHeaders
 		}
 
 		return bytesParsed, nil
-	case RequestDone:
+	case requestParsingHeaders:
+		bytesParsed, done, err := r.Headers.Parse(data)
+
+		if err != nil {
+			return 0, err
+		}
+
+		if done {
+			r.Status = requestDone
+		}
+
+		return bytesParsed, nil
+	case requestDone:
 		return 0, fmt.Errorf("error: trying to read data in a done state.")
 	default:
 		return 0, fmt.Errorf("Unknown request status.")
@@ -53,9 +84,11 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	buf := make([]byte, bufferSize)
 	readToIndex := 0
 
-	newRequest := &Request{}
+	newRequest := &Request{
+		Headers: headers.Headers{},
+	}
 
-	for newRequest.Status != RequestDone {
+	for newRequest.Status != requestDone {
 		if readToIndex >= len(buf) {
 			newBuf := make([]byte, len(buf)*2)
 			copy(newBuf, buf)
@@ -66,7 +99,9 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		readSize, err := reader.Read(buf[readToIndex:])
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				newRequest.Status = RequestDone
+				if newRequest.Status != requestDone {
+					return nil, fmt.Errorf("Incomplete request, in state: %d, read n bytes on EOF: %d", newRequest.Status, readSize)
+				}
 				break
 			}
 			return nil, err
