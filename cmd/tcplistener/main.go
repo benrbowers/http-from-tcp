@@ -30,8 +30,14 @@ func main() {
 	fmt.Println("- Method:", req.RequestLine.Method)
 	fmt.Println("- Target:", req.RequestLine.RequestTarget)
 	fmt.Println("- Version:", req.RequestLine.HttpVersion)
-	fmt.Println("Headers:")
-	for fieldName, fieldValue := range req.Headers {
-		fmt.Printf("- %s: %s\n", fieldName, fieldValue)
+	if len(req.Headers) > 0 {
+		fmt.Println("Headers:")
+		for fieldName, fieldValue := range req.Headers {
+			fmt.Printf("- %s: %s\n", fieldName, fieldValue)
+		}
+	}
+	if req.Body != nil {
+		fmt.Println("Body:")
+		fmt.Println(string(req.Body))
 	}
 }
