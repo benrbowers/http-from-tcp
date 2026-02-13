@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 )
 
@@ -13,6 +14,7 @@ type requestStatus int
 const (
 	requestInitialized requestStatus = iota
 	requestParsingHeaders
+	requestParsingBody
 	requestDone
 )
 
@@ -20,6 +22,7 @@ type Request struct {
 	RequestLine RequestLine
 	Status      requestStatus
 	Headers     headers.Headers
+	Body        []byte
 }
 
 type RequestLine struct {
@@ -67,10 +70,41 @@ func (r *Request) parseSingle(data []byte) (int, error) {
 		}
 
 		if done {
-			r.Status = requestDone
+			r.Status = requestParsingBody
 		}
 
 		return bytesParsed, nil
+	case requestParsingBody:
+		contentHeader, exists := r.Headers.Get("Content-Length")
+		if !exists {
+			r.Status = requestDone
+			return 0, nil
+		}
+
+		contentLen, err := strconv.Atoi(contentHeader)
+		if err != nil {
+			return 0, fmt.Errorf(
+				"Failed to parse Content-Length (%s): %w",
+				contentHeader,
+				err,
+			)
+		}
+
+		if len(data) == contentLen {
+			r.Status = requestDone
+			r.Body = make([]byte, len(data))
+			copy(r.Body, data)
+			return contentLen, nil
+		}
+
+		if len(data) > contentLen {
+			return 0, fmt.Errorf(
+				"Body is larger than reported Content-Length (%d)",
+				contentLen,
+			)
+		}
+
+		return 0, nil
 	case requestDone:
 		return 0, fmt.Errorf("error: trying to read data in a done state.")
 	default:

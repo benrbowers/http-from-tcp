@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"slices"
+	"strings"
 )
 
 type Headers map[string]string
@@ -32,20 +33,25 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 		return 0, false, fmt.Errorf("Field name contains invalid characters: %s", fieldName)
 	}
 
-	fieldName = bytes.ToLower(fieldName)
-
 	h.Set(string(fieldName), string(fieldValue))
 
 	return crlf + 2, false, nil
 }
 
 func (h Headers) Set(key, value string) {
+	key = strings.ToLower(key)
 	currentVal, alreadyExists := h[key]
 	if alreadyExists {
 		h[key] = currentVal + ", " + value
 	} else {
 		h[key] = value
 	}
+}
+
+func (h Headers) Get(key string) (string, bool) {
+	key = strings.ToLower(key)
+	value, ok := h[key]
+	return value, ok
 }
 
 var tokenChars = []byte{'!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~'}
