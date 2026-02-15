@@ -1,6 +1,7 @@
 package server
 
 import (
+	"app/internal/response"
 	"log"
 	"net"
 	"sync/atomic"
@@ -62,18 +63,17 @@ func (s *Server) listen() {
 	}
 }
 
-const response = "HTTP/1.1 200 OK\r\n" +
-	"Content-Type: text/plain\r\n" +
-	"Content-Length: 13\r\n" +
-	"\r\n" +
-	"Hello World!\n"
-
 // Handles a single connection by writing the following response and then closing the connection:
 // For now, no matter what request is sent, the response will always be the same.
 func (s *Server) handle(conn net.Conn) {
-	_, err := conn.Write([]byte(response))
+	err := response.WriteStatusLine(conn, response.StatusOK)
 	if err != nil {
-		log.Fatalf("Error writing response to connection: %v", err)
+		log.Fatalf("Error writing status-line to connection: %v", err)
+	}
+	defaultHeaders := response.GetDefaultHeaders(0)
+	err = response.WriteHeaders(conn, defaultHeaders)
+	if err != nil {
+		log.Fatalf("Error writing headers to connection: %v", err)
 	}
 	err = conn.Close()
 	if err != nil {
