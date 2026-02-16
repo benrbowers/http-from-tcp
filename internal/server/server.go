@@ -1,7 +1,9 @@
 package server
 
 import (
+	"app/internal/request"
 	"app/internal/response"
+	"bytes"
 	"log"
 	"net"
 	"sync/atomic"
@@ -12,13 +14,14 @@ const address = "localhost:42069"
 // Contains the state of the server
 type Server struct {
 	listener net.Listener
+	handler  Handler
 	closed   atomic.Bool
 }
 
 // Creates a net.Listener and returns a new
 // Server instance. Starts listening for
 // requests inside a goroutine.
-func Serve(port int) (*Server, error) {
+func Serve(port int, handler Handler) (*Server, error) {
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
 		return nil, err
@@ -26,12 +29,11 @@ func Serve(port int) (*Server, error) {
 
 	newServer := &Server{
 		listener: listener,
+		handler:  handler,
 		closed:   atomic.Bool{},
 	}
 
-	go func() {
-		newServer.listen()
-	}()
+	go newServer.listen()
 
 	return newServer, nil
 }
@@ -66,14 +68,46 @@ func (s *Server) listen() {
 // Handles a single connection by writing the following response and then closing the connection:
 // For now, no matter what request is sent, the response will always be the same.
 func (s *Server) handle(conn net.Conn) {
-	err := response.WriteStatusLine(conn, response.StatusOK)
+	req, err := request.RequestFromReader(conn)
+	if err != nil {
+		hErr := HandlerError{
+			StatusCode: 500,
+			Message:    err.Error(),
+		}
+		hErr.Write(conn)
+
+		return
+	}
+
+	bodyBuffer := &bytes.Buffer{}
+	handlerErr := s.handler(bodyBuffer, req)
+	if handlerErr != nil {
+		handlerErr.Write(conn)
+		return
+	}
+
+	err = response.WriteStatusLine(conn, response.StatusOK)
 	if err != nil {
 		log.Fatalf("Error writing status-line to connection: %v", err)
 	}
-	defaultHeaders := response.GetDefaultHeaders(0)
+	defaultHeaders := response.GetDefaultHeaders(bodyBuffer.Len())
 	err = response.WriteHeaders(conn, defaultHeaders)
 	if err != nil {
+		log.Fatalf("Error writing default headers to connection: %v", err)
+	}
+	err = response.WriteHeaders(conn, req.Headers)
+	if err != nil {
 		log.Fatalf("Error writing headers to connection: %v", err)
+	}
+	err = response.WriteCRLF(conn)
+	if err != nil {
+		log.Fatalf("Error writing CRLF to connection: %v", err)
+	}
+	if bodyBuffer.Len() > 0 {
+		_, err = conn.Write(bodyBuffer.Bytes())
+		if err != nil {
+			log.Fatalf("Error writing body to connection: %v", err)
+		}
 	}
 	err = conn.Close()
 	if err != nil {

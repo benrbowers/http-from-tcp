@@ -54,10 +54,10 @@ func WriteHeaders(w io.Writer, headers headers.Headers) error {
 		}
 	}
 
-	_, err := w.Write([]byte("\r\n"))
-	if err != nil {
-		return err
-	}
-
 	return nil
+}
+
+func WriteCRLF(w io.Writer) error {
+	_, err := w.Write([]byte{'\r', '\n'})
+	return err
 }
