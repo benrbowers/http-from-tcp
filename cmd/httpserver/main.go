@@ -2,8 +2,8 @@ package main
 
 import (
 	"app/internal/request"
+	"app/internal/response"
 	"app/internal/server"
-	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -26,27 +26,53 @@ func main() {
 	log.Println("Server gracefully stopped")
 }
 
-var handler server.Handler = func(w io.Writer, req *request.Request) *server.HandlerError {
+var handler server.Handler = func(w *response.Writer, req *request.Request) {
 	switch req.RequestLine.RequestTarget {
 	case "/yourproblem":
-		return &server.HandlerError{
-			StatusCode: 400,
-			Message:    "Your problem is not my problem\n",
-		}
+		w.WriteStatusLine(response.StatusBadRequest)
+		headers := response.GetDefaultHeaders(len(badRequestHtml))
+		headers.Replace("Content-Type", "text/html")
+		w.WriteHeaders(headers)
+		w.WriteBody(badRequestHtml)
 	case "/myproblem":
-		return &server.HandlerError{
-			StatusCode: 500,
-			Message:    "Woopsie, my bad\n",
-		}
+		w.WriteStatusLine(response.StatusInternalError)
+		headers := response.GetDefaultHeaders(len(internalErrorHtml))
+		headers.Replace("Content-Type", "text/html")
+		w.WriteHeaders(headers)
+		w.WriteBody(internalErrorHtml)
 	default:
-		_, err := w.Write([]byte("All good, frfr\n"))
-		if err != nil {
-			return &server.HandlerError{
-				StatusCode: 500,
-				Message:    err.Error(),
-			}
-		}
-
-		return nil
+		w.WriteStatusLine(response.StatusOK)
+		headers := response.GetDefaultHeaders(len(okHtml))
+		headers.Replace("Content-Type", "text/html")
+		w.WriteHeaders(headers)
+		w.WriteBody(okHtml)
 	}
 }
+
+var badRequestHtml = []byte(`<html>
+  <head>
+    <title>400 Bad Request</title>
+  </head>
+  <body>
+    <h1>Bad Request</h1>
+    <p>Your request honestly kinda sucked.</p>
+  </body>
+</html>`)
+var internalErrorHtml = []byte(`<html>
+  <head>
+    <title>500 Internal Server Error</title>
+  </head>
+  <body>
+    <h1>Internal Server Error</h1>
+    <p>Okay, you know what? This one is on me.</p>
+  </body>
+</html>`)
+var okHtml = []byte(`<html>
+  <head>
+    <title>200 OK</title>
+  </head>
+  <body>
+    <h1>Success!</h1>
+    <p>Your request was an absolute banger.</p>
+  </body>
+</html>`)

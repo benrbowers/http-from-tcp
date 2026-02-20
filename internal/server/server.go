@@ -3,7 +3,7 @@ package server
 import (
 	"app/internal/request"
 	"app/internal/response"
-	"bytes"
+	"fmt"
 	"log"
 	"net"
 	"sync/atomic"
@@ -65,50 +65,23 @@ func (s *Server) listen() {
 	}
 }
 
-// Handles a single connection by writing the following response and then closing the connection:
-// For now, no matter what request is sent, the response will always be the same.
+// Handles a single connection by writing the response and then closing the connection:
 func (s *Server) handle(conn net.Conn) {
+	rWriter := response.NewWriter(conn)
+
 	req, err := request.RequestFromReader(conn)
 	if err != nil {
-		hErr := HandlerError{
-			StatusCode: 500,
-			Message:    err.Error(),
-		}
-		hErr.Write(conn)
+		body := fmt.Appendf(nil, "Error parsing request: %v", err)
+		rWriter.WriteStatusLine(response.StatusBadRequest)
+		headers := response.GetDefaultHeaders(len(body))
+		rWriter.WriteHeaders(headers)
+		rWriter.WriteBody(body)
 
 		return
 	}
 
-	bodyBuffer := &bytes.Buffer{}
-	handlerErr := s.handler(bodyBuffer, req)
-	if handlerErr != nil {
-		handlerErr.Write(conn)
-		return
-	}
+	s.handler(rWriter, req)
 
-	err = response.WriteStatusLine(conn, response.StatusOK)
-	if err != nil {
-		log.Fatalf("Error writing status-line to connection: %v", err)
-	}
-	defaultHeaders := response.GetDefaultHeaders(bodyBuffer.Len())
-	err = response.WriteHeaders(conn, defaultHeaders)
-	if err != nil {
-		log.Fatalf("Error writing default headers to connection: %v", err)
-	}
-	err = response.WriteHeaders(conn, req.Headers)
-	if err != nil {
-		log.Fatalf("Error writing headers to connection: %v", err)
-	}
-	err = response.WriteCRLF(conn)
-	if err != nil {
-		log.Fatalf("Error writing CRLF to connection: %v", err)
-	}
-	if bodyBuffer.Len() > 0 {
-		_, err = conn.Write(bodyBuffer.Bytes())
-		if err != nil {
-			log.Fatalf("Error writing body to connection: %v", err)
-		}
-	}
 	err = conn.Close()
 	if err != nil {
 		log.Fatalf("Error trying to close connection: %v", err)
