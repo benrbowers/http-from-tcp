@@ -1,10 +1,13 @@
 package main
 
 import (
+	h "app/internal/headers"
 	"app/internal/request"
 	"app/internal/response"
 	"app/internal/server"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -48,44 +51,111 @@ func handler(w *response.Writer, req *request.Request) {
 }
 
 var httpbinProxyHandler server.Handler = func(w *response.Writer, req *request.Request) {
-	proxyPath := "/httpbin/"
-	if strings.HasPrefix(req.RequestLine.RequestTarget, proxyPath) {
-		target := req.RequestLine.RequestTarget[len(proxyPath):]
-		resp, err := http.Get("https://httpbin.org/" + target)
-		if err != nil {
-			log.Printf(
-				"Error fetching %s: %v",
-				"https://httpbin.org/"+target,
-				err,
-			)
-			handle500(w, req)
-			return
-		}
+	if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin/stream") {
+		httpbinStreamHandler(w, req)
+		return
+	}
+	if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin/html") {
+		httpbinHtmlHandler(w, req)
+		return
+	}
+}
 
-		w.WriteStatusLine(response.StatusOK)
-		headers := response.GetChunkedHeaders()
-		headers.Set("Content-Type", "application/json")
-		w.WriteHeaders(headers)
+var httpbinStreamHandler server.Handler = func(w *response.Writer, req *request.Request) {
+	target := strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin/")
+	resp, err := fetchHttpbin(target)
+	if err != nil {
+		handle500(w, req)
+		return
+	}
+	defer resp.Body.Close()
 
-		readBuffer := make([]byte, 1024)
-		for !w.Done() {
-			n, err := resp.Body.Read(readBuffer)
+	w.WriteStatusLine(response.StatusOK)
+	headers := response.GetChunkedHeaders()
+	headers.Set("Content-Type", "application/json")
+	w.WriteHeaders(headers)
+
+	_, err = writeChunkedBodyFromReader(w, resp.Body)
+	if err != nil {
+		log.Fatalf("Error writing chunked body from reader: %v", err)
+		return
+	}
+
+	err = w.WriteTrailers(h.Headers{})
+	if err != nil {
+		log.Fatalf("Error writing trailers: %v", err)
+		return
+	}
+}
+var httpbinHtmlHandler server.Handler = func(w *response.Writer, req *request.Request) {
+	target := strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin/")
+	resp, err := fetchHttpbin(target)
+	if err != nil {
+		handle500(w, req)
+		return
+	}
+	defer resp.Body.Close()
+
+	w.WriteStatusLine(response.StatusOK)
+	headers := response.GetChunkedHeaders()
+	headers.Set("Content-Type", "text/html")
+	headers.Set("Trailer", "X-Content-SHA256")
+	headers.Set("Trailer", "X-Content-Length")
+	w.WriteHeaders(headers)
+
+	hasher := sha256.New()
+	n, err := writeChunkedBodyFromReader(w, io.TeeReader(resp.Body, hasher))
+	if err != nil {
+		log.Fatalf("Error writing chunked body from reader: %v", err)
+		return
+	}
+
+	trailers := h.Headers{}
+	trailers.Set("X-Content-Length", fmt.Sprintf("%d", n))
+	trailers.Set("X-Content-SHA256", fmt.Sprintf("%x", hasher.Sum(nil)))
+
+	err = w.WriteTrailers(trailers)
+	if err != nil {
+		log.Fatalf("Error writing trailers: %v", err)
+		return
+	}
+}
+
+func writeChunkedBodyFromReader(w *response.Writer, r io.Reader) (int, error) {
+	bytesWritten := 0
+
+	readBuffer := make([]byte, 1024)
+	for !w.Done() {
+		n, err := r.Read(readBuffer)
+		if n > 0 {
+			_, err := w.WriteChunkedBody(readBuffer[0:n])
 			if err != nil {
-				if errors.Is(err, io.EOF) {
-					w.WriteChunkedBodyDone()
-					break
-				}
-				log.Printf("Error reading body from httpbin.org: %v", err)
+				return bytesWritten, err
+			}
+			bytesWritten += n
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) {
 				break
 			}
-
-			if n == 0 {
-				w.WriteChunkedBodyDone()
-				break
-			}
-			w.WriteChunkedBody(readBuffer[0:n])
+			return bytesWritten, err
 		}
 	}
+
+	_, err := w.WriteChunkedBodyDone()
+	return bytesWritten, err
+}
+
+func fetchHttpbin(target string) (*http.Response, error) {
+	resp, err := http.Get("https://httpbin.org/" + target)
+	if err != nil {
+		log.Printf(
+			"Error fetching %s: %v",
+			"https://httpbin.org/"+target,
+			err,
+		)
+	}
+	return resp, err
 }
 
 var handle200 server.Handler = func(w *response.Writer, _ *request.Request) {

@@ -12,6 +12,7 @@ const (
 	writingStatusLine writerState = iota
 	writingHeaders
 	writingBody
+	writingTrailers
 	writingDone
 )
 
