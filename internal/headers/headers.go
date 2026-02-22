@@ -59,6 +59,11 @@ func (h Headers) Replace(key, value string) {
 	h[key] = value
 }
 
+func (h Headers) Remove(key string) {
+	key = strings.ToLower(key)
+	delete(h, key)
+}
+
 func (h Headers) Merge(h2 Headers) {
 	for key, val := range h2 {
 		h.Set(key, val)

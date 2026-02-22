@@ -19,3 +19,11 @@ func GetDefaultHeaders(contentLen int) headers.Headers {
 
 	return defaultHeaders
 }
+
+func GetChunkedHeaders() headers.Headers {
+	chunkedHeaders := headers.Headers{}
+	chunkedHeaders.Set("Transfer-Encoding", "chunked")
+	chunkedHeaders.Set("Connection", "close")
+
+	return chunkedHeaders
+}

@@ -92,3 +92,7 @@ func (w *Writer) WriteBody(data []byte) (int, error) {
 	w.state = writingDone
 	return n, nil
 }
+
+func (w *Writer) Done() bool {
+	return w.state == writingDone
+}
