@@ -6,7 +6,6 @@ import (
 	"app/internal/response"
 	"app/internal/server"
 	"crypto/sha256"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -60,7 +59,6 @@ var httpbinProxyHandler server.Handler = func(w *response.Writer, req *request.R
 		return
 	}
 }
-
 var httpbinStreamHandler server.Handler = func(w *response.Writer, req *request.Request) {
 	target := strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin/")
 	resp, err := fetchHttpbin(target)
@@ -75,7 +73,7 @@ var httpbinStreamHandler server.Handler = func(w *response.Writer, req *request.
 	headers.Set("Content-Type", "application/json")
 	w.WriteHeaders(headers)
 
-	_, err = writeChunkedBodyFromReader(w, resp.Body)
+	_, err = w.WriteChunkedBodyFromReader(resp.Body)
 	if err != nil {
 		log.Fatalf("Error writing chunked body from reader: %v", err)
 		return
@@ -104,7 +102,7 @@ var httpbinHtmlHandler server.Handler = func(w *response.Writer, req *request.Re
 	w.WriteHeaders(headers)
 
 	hasher := sha256.New()
-	n, err := writeChunkedBodyFromReader(w, io.TeeReader(resp.Body, hasher))
+	n, err := w.WriteChunkedBodyFromReader(io.TeeReader(resp.Body, hasher))
 	if err != nil {
 		log.Fatalf("Error writing chunked body from reader: %v", err)
 		return
@@ -119,31 +117,6 @@ var httpbinHtmlHandler server.Handler = func(w *response.Writer, req *request.Re
 		log.Fatalf("Error writing trailers: %v", err)
 		return
 	}
-}
-
-func writeChunkedBodyFromReader(w *response.Writer, r io.Reader) (int, error) {
-	bytesWritten := 0
-
-	readBuffer := make([]byte, 1024)
-	for !w.Done() {
-		n, err := r.Read(readBuffer)
-		if n > 0 {
-			_, err := w.WriteChunkedBody(readBuffer[0:n])
-			if err != nil {
-				return bytesWritten, err
-			}
-			bytesWritten += n
-		}
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			return bytesWritten, err
-		}
-	}
-
-	_, err := w.WriteChunkedBodyDone()
-	return bytesWritten, err
 }
 
 func fetchHttpbin(target string) (*http.Response, error) {

@@ -2,7 +2,9 @@ package response
 
 import (
 	"app/internal/headers"
+	"errors"
 	"fmt"
+	"io"
 )
 
 func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
@@ -67,4 +69,29 @@ func (w *Writer) WriteTrailers(trailers headers.Headers) error {
 
 	w.state = writingDone
 	return nil
+}
+
+func (w *Writer) WriteChunkedBodyFromReader(r io.Reader) (int, error) {
+	bytesWritten := 0
+
+	readBuffer := make([]byte, 1024)
+	for !w.Done() {
+		n, err := r.Read(readBuffer)
+		if n > 0 {
+			_, err := w.WriteChunkedBody(readBuffer[0:n])
+			if err != nil {
+				return bytesWritten, err
+			}
+			bytesWritten += n
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return bytesWritten, err
+		}
+	}
+
+	_, err := w.WriteChunkedBodyDone()
+	return bytesWritten, err
 }
