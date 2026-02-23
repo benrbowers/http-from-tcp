@@ -37,8 +37,12 @@ func handler(w *response.Writer, req *request.Request) {
 		httpbinProxyHandler(w, req)
 		return
 	}
+	if req.RequestLine.RequestTarget == "/video" {
+		videoHandler(w, req)
+		return
+	}
 	if req.RequestLine.RequestTarget == "/yourproblem" {
-		handle200(w, req)
+		handle400(w, req)
 		return
 	}
 	if req.RequestLine.RequestTarget == "/myproblem" {
@@ -117,6 +121,21 @@ var httpbinHtmlHandler server.Handler = func(w *response.Writer, req *request.Re
 		log.Fatalf("Error writing trailers: %v", err)
 		return
 	}
+}
+
+var videoHandler server.Handler = func(w *response.Writer, req *request.Request) {
+	vid, err := os.ReadFile("./assets/vim.mp4")
+	if err != nil {
+		log.Printf("Error reading video file: %v", err)
+		handle500(w, req)
+		return
+	}
+
+	w.WriteStatusLine(response.StatusOK)
+	headers := response.GetDefaultHeaders(len(vid))
+	headers.Replace("Content-Type", "video/mp4")
+	w.WriteHeaders(headers)
+	w.WriteBody(vid)
 }
 
 func fetchHttpbin(target string) (*http.Response, error) {
