@@ -2,15 +2,15 @@
 
 In this repo, I've completed [this boot.dev course](https://www.boot.dev/courses/learn-http-protocol-golang).
 
-The purpose of this course was to use the Go programming language build a simple HTTP/1.1 parser and server: **starting from TCP.**
+The purpose of this course was to use the Go programming language to build a simple HTTP/1.1 parser and server: **starting from TCP.**
 
-I had an absolute blast completing this course, and I would recommend it to anyone wanting to diver deeper into Go, the HTTP protocol, interfaces, and/or testing.
+I had an absolute blast completing this course, and I would recommend it to anyone wanting to dive deeper into Go, the HTTP protocol, interfaces, or testing.
 
 ## What I've Learned
-- General shape an HTTP/1.1 message
+- General shape of an HTTP/1.1 message:
   - [request-line (if request)/status-line (if response)] CRLF
   - [field-line] CRLF x [number of headers]
-    - field-line = field-value: field-name
+    - field-line = field-name: field-value
   - CRLF
   - [message-body]
 - Finally learned what CRLF stands for: "Carriage Return, Line Feed"
@@ -19,10 +19,10 @@ I had an absolute blast completing this course, and I would recommend it to anyo
   - By default, an HTTP server expects an HTTP message to include the exact length **in bytes** of the body up front in the "Content-Length" header.
     - If the body is off by even a single byte, an error is thrown.
   - With _chunked encoding,_ the size of the body isn't known up front, and so it gets sent down in **chunks.**
-  - Each "chunk-data" block is preceded by "chunk-size" line, and much like Content-Length, they must match exactly.
+  - Each "chunk-data" block is preceded by a "chunk-size" line, and much like Content-Length, they must match exactly.
   - Generally, after the body has been completely streamed down and the exact content length is known, it will be appended as a **trailer.** (Usually as "X-Content-Length")
     - Trailers are only present in chunked responses, and serve the _exact same purpose as headers,_ except that they come at the very end.
-    - Trailers must be announced up front in a comma separated list using the "Trailer" header.
+    - Trailers must be announced up front in a comma-separated list using the "Trailer" header.
   - Users of HTTP can enable chunked encoding simply by omitting the "Content-Length" header and then including "Transfer-Encoding: chunked".
     - It is compatible with most if not all of the different "Content-Type" options. You can stream pretty much anything you can turn into bytes.
 - [io](https://pkg.go.dev/io) package interfaces
